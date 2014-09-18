@@ -1,0 +1,19 @@
+---
+  - hosts: all
+    vars:
+      backup_server: <server>
+    tasks:
+      - name: Backup existing bp.conf file
+        command: cp -f /usr/openv/netbackup/bp.conf /usr/openv/netbackup/bp.conf.bak
+
+      - name: Add new entry to top of bp.conf file
+        command: sed -i '1s/^/SERVER = {{ backup_server }}\n/' /usr/openv/netbackup/bp.conf
+
+      - name: Validate changes
+        command: head -n 1 /usr/openv/netbackup/bp.conf | grep pxrbnb01
+        register: status
+        ignore_errors: yes
+
+      - name: revert changes if previous command fails
+        command: cp -f /usr/openv/netbackup/bp.conf.bak /usr/openv/netbackup/bp.conf
+        when: status == 1
