@@ -1,0 +1,107 @@
+---
+  - hosts: all
+    vars:
+      puppet_master: admpupt102.unix.gsm1900.org
+    tasks:
+      - name: Stop NTP
+        command: service ntpd stop
+
+      - name: Copy ntp.conf
+        command: /bin/cp -f /etc/ntp.conf.prod /etc/ntp.conf
+
+      - name: Create ntp.drift
+        file: path=/etc/ntp.drift state=touch
+
+      - name: Set ntp.drift owner
+        file: path=/etc/ntp.drift owner=ntp group=ntp
+
+      - name: Start NTP
+        command: service ntpd start
+
+      - name: Configure resolv.conf
+        copy: src=/etc/resolv.conf.prod dest=/etc/resolv.conf backup=yes
+
+      - name: Fix hosts
+        command: sed -i "s/tmphost//" /etc/hosts
+
+      - name: Fix /etc/issue
+        command: sed -i "s/tmphost/${HOSTNAME}/" /etc/issue
+
+      - name: Create depot
+        file: path=/depot state=directory
+
+      - name: Create /nfs/infra
+        file: path=/nfs/infra state=directory
+
+      - name: Create linux_x86
+        file: path=/depot/linux_x86 state=directory
+
+      - name: Create USEC
+        file: path=/depot/USEC state=directory
+
+      - name: Create Symlink for /depot/scripts
+        file: src=/nfs/infra/hpux/bin dest=/depot/scripts state=link force=yes
+
+      - name: Configure nfs/infra mount point
+        mount: name=/nfs/infra src='pxcel001_dm4:/depot_master/mnt' fstype=nfs opts=ro,nosuid,soft dump=0 passno=0 state=mounted
+
+      - name: Configure linux_x86 mount point
+        mount: name=/depot/linux_x86 src='pxcel001_dm2:/depot_linux_x86/mnt' fstype=nfs opts=ro,nosuid,soft dump=0 passno=2 state=mounted
+
+      - name: Configure USEC mount point
+        mount: name=/depot/USEC src='pxcel001_dm4:/UNIX_SECURITY_SCRIPTS/mnt/scripts' fstype=nfs opts=ro,nosuid,soft dump=0 passno=2 state=mounted
+
+      - name: Install Opsware
+        script: /nfs/infra/automation/bin/install_OPSW creates=/opt/opsware/agent/bin/agent_uninstall.sh
+
+      - name: Patching Server (OEL 5)
+        script: /depot/linux_x86/linux/scripts/Patch/install_Linux_patches.sh -r "{{ ansible_local.build.general.oel_version }}"
+        when: ansible_distribution_major_version == '5'
+
+      - name: Patching Server (OEL 6)
+        script: /depot/linux_x86/linux/scripts/Patch_OL6/install_Linux_patches.sh -r "{{ ansible_local.build.general.oel_version }}"
+        when: ansible_distribution_major_version == '6'
+
+      - name: Run Post-Install Script (OEL 5)
+        script: /nfs/infra/automation/bin/Oracle_Linux_5_Post-Install
+        when: ansible_distribution_major_version == '5'
+
+      - name: Run Post-Install Script (OEL 6)
+        script: /nfs/infra/automation/bin/Oracle_Linux_6_Post-Install
+        when: ansible_distribution_major_version == '6'
+
+      - name: Install VAS
+        script: /nfs/infra/usec/bin/vas_upm/VAS_main_install.sh -I "{{ ansible_local.build.general.organization }}" "{{ ansible_local.build.general.organizational_unit }}" "{{ ansible_local.build.general.server_type }}" "{{ ansible_local.build.general.pci }}"
+
+      - name: Install UPM
+        script: /nfs/infra/usec/bin/vas_upm/UPM_main_install.sh -I
+
+      - name: Install NetBackup
+        script: /nfs/infra/automation/bin/OO_NB_install.sh -I -e
+
+      - name: Install pkgconfig
+        yum: name=pkgconfig enablerepo=* state=present
+        when: ansible_distribution_major_version == '5'
+
+      - name: Install virt-what
+        yum: name=/nfs/infra/3rd_party/sw/virt-what-1.11-2.el5.x86_64.rpm state=present
+        when: ansible_distribution_major_version == '5'
+
+      - name: Install Puppet
+        script: /nfs/infra/automation/bin/OO_puppet_agent_install.sh -I creates=/opt/puppet/bin/puppet
+
+      - name: Install OpenView
+        script: /depot/linux_x86/linux/scripts/Base_OL6/install_OV.sh creates=/opt/OV/ovswitchuser.sh
+        when: ansible_distribution_major_version == '6'
+
+      - name: Install OpenView
+        script: /depot/linux_x86/linux/scripts/Base/install_OV.sh creates=/opt/OV/ovswitchuser.sh
+        when: ansible_distribution_major_version == '5'
+
+      - name: Run puppet wait for cert
+        command: puppet agent -t
+
+      - name: Sign puppet cert
+        command: puppet cert sign "{{ inventory_hostname }}"
+        delegate_to: "{{ puppet_master }}"
+        remote_user: root

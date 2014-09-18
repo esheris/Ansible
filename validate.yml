@@ -1,0 +1,35 @@
+---
+  - hosts: all
+    tasks:
+      - name: Check Release
+        command: pmksh -c "lsb_release -r | awk {'print $2'}"
+        register: release_version
+
+      - name: Validate Release
+        fail: msg="OS Version found to be {{release_version}} - expected {{factor_oel_version}}"
+        when: release_version != factor_oel_version
+
+      - name: Check OU
+        command: pmksh -c "/nfs/infra/hpux/bin/vas_server_info | grep OU | awk {'print $4'}"
+        register: OU
+
+      - name: Validate Release
+        fail: msg="Server OU Expected - {{factor_organizational_unit}} - Found in - {{OU}}"
+        when: OU != factor_organizational_unit
+
+      - name: Check Opsware
+        stat: path=/opt/opsware/agent_tools/
+        register: opsware_install
+        fail: msg="Opsware Not Installed"
+        when: opsware_install.stat.isdir is not defined
+
+      - name: Check Netbackup
+        stat: path=/usr/openv/netbackup/bin/version
+        register: netbackup_install
+        fail: msg="Net Backup not installed"
+        when: netbackup_install.stat.isdir is not defined
+
+      - name: Validate Netbackup
+        fail: msg="Unable to find netbackup installation"
+        when: netbackup_install|failed
+
