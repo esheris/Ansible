@@ -1,13 +1,18 @@
 ---
   - hosts: all
-    vars:
-      puppet_master: admpupt102.unix.gsm1900.org
     tasks:
+      - name: Check if ntp.conf matches ntp.conf.prod
+        command: diff /etc/ntp.conf /etc/ntp.conf.prod
+        ignore_errors: yes
+        register: ntpconf_configured
+
       - name: Stop NTP
         command: service ntpd stop
+        when: ntpconf_configured.rc != 0
 
       - name: Copy ntp.conf
         command: /bin/cp -f /etc/ntp.conf.prod /etc/ntp.conf
+        when: ntpconf_configured != 0
 
       - name: Create ntp.drift
         file: path=/etc/ntp.drift state=touch
@@ -17,9 +22,16 @@
 
       - name: Start NTP
         command: service ntpd start
+        when: ntpconf_configured != 0
+
+      - name: Check if resolv.conf matches resolv.conf.prod
+        command: diff /etc/resolv.conf /etc/resolv.conf.prod
+        ignore_errors: yes
+        register: resolvconf_configured
 
       - name: Configure resolv.conf
         copy: src=/etc/resolv.conf.prod dest=/etc/resolv.conf backup=yes
+        when: resolvconf_configured.rc != 0
 
       - name: Fix hosts
         command: sed -i "s/tmphost//" /etc/hosts
@@ -55,29 +67,29 @@
         script: /nfs/infra/automation/bin/install_OPSW creates=/opt/opsware/agent/bin/agent_uninstall.sh
 
       - name: Patching Server (OEL 5)
-        script: /depot/linux_x86/linux/scripts/Patch/install_Linux_patches.sh -r "{{ ansible_local.build.general.oel_version }}"
+        script: /depot/linux_x86/linux/scripts/Patch/install_Linux_patches.sh -r "{{ oel_version }}"
         when: ansible_distribution_major_version == '5'
 
       - name: Patching Server (OEL 6)
-        script: /depot/linux_x86/linux/scripts/Patch_OL6/install_Linux_patches.sh -r "{{ ansible_local.build.general.oel_version }}"
+        script: /depot/linux_x86/linux/scripts/Patch_OL6/install_Linux_patches.sh -r "{{ oel_version }}"
         when: ansible_distribution_major_version == '6'
 
       - name: Run Post-Install Script (OEL 5)
-        script: /nfs/infra/automation/bin/Oracle_Linux_5_Post-Install
+        script: /nfs/infra/automation/bin/Oracle_Linux_5_Post-Install creates=/etc/vx/bin/vxdiskunsetup
         when: ansible_distribution_major_version == '5'
 
       - name: Run Post-Install Script (OEL 6)
-        script: /nfs/infra/automation/bin/Oracle_Linux_6_Post-Install
+        script: /nfs/infra/automation/bin/Oracle_Linux_6_Post-Install creates=/etc/vx/bin/vxdiskunsetup
         when: ansible_distribution_major_version == '6'
 
       - name: Install VAS
-        script: /nfs/infra/usec/bin/vas_upm/VAS_main_install.sh -I "{{ ansible_local.build.general.organization }}" "{{ ansible_local.build.general.organizational_unit }}" "{{ ansible_local.build.general.server_type }}" "{{ ansible_local.build.general.pci }}"
+        script: /nfs/infra/usec/bin/vas_upm/VAS_main_install.sh -I "{{ organization }}" "{{ organizational_unit }}" "{{ server_type }}" "{{ pci }}" creates=/opt/quest/bin/vastool
 
       - name: Install UPM
-        script: /nfs/infra/usec/bin/vas_upm/UPM_main_install.sh -I
+        script: /nfs/infra/usec/bin/vas_upm/UPM_main_install.sh -I creates=/opt/quest/bin/pmksh
 
       - name: Install NetBackup
-        script: /nfs/infra/automation/bin/OO_NB_install.sh -I -e
+        script: /nfs/infra/automation/bin/OO_NB_install.sh -I -e creates=/usr/openv/netbackup/bp.conf
 
       - name: Install pkgconfig
         yum: name=pkgconfig enablerepo=* state=present
@@ -91,17 +103,9 @@
         script: /nfs/infra/automation/bin/OO_puppet_agent_install.sh -I creates=/opt/puppet/bin/puppet
 
       - name: Install OpenView
-        script: /depot/linux_x86/linux/scripts/Base_OL6/install_OV.sh creates=/opt/OV/ovswitchuser.sh
+        script: /depot/linux_x86/linux/scripts/Base_OL6/install_OV.sh creates=/opt/OV/bin/ovswitchuser.sh
         when: ansible_distribution_major_version == '6'
 
       - name: Install OpenView
-        script: /depot/linux_x86/linux/scripts/Base/install_OV.sh creates=/opt/OV/ovswitchuser.sh
+        script: /depot/linux_x86/linux/scripts/Base/install_OV.sh creates=/opt/OV/bin/ovswitchuser.sh
         when: ansible_distribution_major_version == '5'
-
-      - name: Run puppet wait for cert
-        command: puppet agent -t
-
-      - name: Sign puppet cert
-        command: puppet cert sign "{{ inventory_hostname }}"
-        delegate_to: "{{ puppet_master }}"
-        remote_user: root

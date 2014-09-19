@@ -1,0 +1,17 @@
+---
+  - hosts: all
+    vars:
+      directory: /path/to/dir
+      mount: path:/to/nfs/share
+    tasks:
+      - name: Make {{ directory }} directory
+        file: path={{ directory }} state=directory
+
+      - name: Configure deploy-shared mount point
+        mount: name={{ directory }} src={{ mount }} fstype=nfs opts=rw,nosuid,soft dump=0 passno=2 state=mounted
+
+      - name: Validate mount
+        command: mount | grep {{ mount }}
+
+      - name: Validate fstab
+        command: cat /etc/fstab | grep {{ mount }}
