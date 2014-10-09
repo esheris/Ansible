@@ -1,0 +1,6 @@
+---
+  - hosts: all
+    roles:
+      - { role: yum-update, when: "ansible_os_family == 'RedHat'" }
+      - { role: rpm-update, when: "ansible_os_family == 'AIX'" }
+      - { role: pkg-update, when: "ansible_os_family == 'Solaris'" }

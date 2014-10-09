@@ -1,0 +1,21 @@
+- shell: "export evil='() { :;}; echo vulnerable'; bash -c echo;"
+  register: result
+
+- fail:
+    msg="Not Vulnerable"
+  when: result.stdout != 'vulnerable'
+
+- command: /usr/bin/yum clean all
+
+- yum: name=/nfs/infra/linux_x86/sw/bash/bash-3.2-33.el5_11.4.x86_64.rpm state=present
+  when: ansible_distribution_major_version == '5'
+
+- yum: name=/nfs/infra/linux_x86/sw/bash/bash-4.1.2-15.el6_5.2.x86_64.rpm state=present
+  when: ansible_distribution_major_version == '6'
+
+- shell: "export evil='() { :;}; echo vulnerable'; bash -c echo;"
+  register: result
+
+- fail:
+    msg="Still Vulnerable After Applying Patch"
+  when: result.stdout == 'vulnerable'

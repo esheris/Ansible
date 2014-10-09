@@ -1,0 +1,15 @@
+- shell: "export evil='() { :;}; echo vulnerable'; bash -c echo;"
+  register: result
+
+- fail:
+    msg="Not Vulnerable"
+  when: result.stdout != 'vulnerable'
+
+- command: rpm -ivh --force /nfs/infra/aix/sw/rpms/bash-4.2-2.aix6.1.ppc.rpm
+
+- shell: "export evil='() { :;}; echo vulnerable'; bash -c echo;"
+  register: result
+
+- fail:
+    msg="Still Vulnerable After Applying Patch"
+  when: result.stdout == 'vulnerable'
